@@ -1,5 +1,6 @@
  Client Lead Management System (Mini CRM)**
 🔗📌 Project Overview
+_____
 This project is a web-based Client Lead Management System (Mini CRM) built using React. It helps businesses collect, manage, and track potential clients (leads) efficiently through a centralized dashboard.
 
 🔗🧑‍💼 System Description
