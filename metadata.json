@@ -1,0 +1,6 @@
+{
+  "name": "LeadFlow CRM",
+  "description": "Enterprise-grade lead management system featuring AI-driven client insights, real-time analytics dashboards, and secure pipeline tracking for modern agencies.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["GEMINI_AI", "REALTIME_DATABASE"]
+}

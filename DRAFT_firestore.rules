@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Leads ---
+    function isValidLead(data) {
+      return data.keys().hasAll(['name', 'email', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().size() >= 5 && data.keys().size() <= 10 // Allowing phone/source
+        && data.name is string && data.name.size() <= 128
+        && data.email is string && data.email.size() <= 128
+        && data.status in ['new', 'contacted', 'converted']
+        && (data.createdAt is timestamp || data.createdAt == request.time)
+        && (data.updatedAt is timestamp || data.updatedAt == request.time);
+    }
+
+    match /leads/{leadId} {
+      allow create: if isValidId(leadId) 
+        && isValidLead(incoming()) 
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      
+      allow get, list, delete: if isAdmin();
+      
+      allow update: if isAdmin() 
+        && isValidLead(incoming()) 
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Action: Update Status
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+          // Action: Edit Lead Details
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'phone', 'source', 'updatedAt'])
+        );
+
+      // --- Notes ---
+      match /notes/{noteId} {
+        function isValidNote(data) {
+          return data.keys().hasAll(['authorId', 'authorName', 'text', 'createdAt'])
+            && data.keys().size() == 4
+            && data.authorId == request.auth.uid
+            && data.authorName is string && data.authorName.size() <= 128
+            && data.text is string && data.text.size() <= 2048
+            && data.createdAt == request.time;
+        }
+
+        allow read, delete: if isAdmin();
+        allow create, update: if isAdmin() && isValidNote(incoming());
+      }
+    }
+
+    // --- Admins ---
+    match /admins/{adminUid} {
+      allow read: if isSignedIn() && request.auth.uid == adminUid;
+      // Bootstrapped by the developer or manual console entry.
+      // We don't allow users to make themselves admins.
+    }
+  }
+}

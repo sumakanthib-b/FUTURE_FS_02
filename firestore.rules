@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Connectivity Test ---
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // --- Leads ---
+    function isValidLead(data) {
+      return data.keys().hasAll(['name', 'email', 'status', 'createdAt', 'updatedAt'])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 128
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 128
+        && data.status is string && data.status in ['new', 'contacted', 'converted']
+        // Fields allowed depending on source/form
+        && (!data.keys().hasAny(['phone']) || (data.phone is string && data.phone.size() <= 32))
+        && (!data.keys().hasAny(['source']) || (data.source is string && data.source.size() <= 128))
+        && (!data.keys().hasAny(['message']) || (data.message is string && data.message.size() <= 5000));
+    }
+
+    match /leads/{leadId} {
+      allow get: if isValidId(leadId) && (isAdmin() || (isSignedIn() && existing().email == request.auth.token.email)); // Allow user to see their own lead if logged in, otherwise just admin
+      allow list: if isAdmin() || (isSignedIn() && resource.data.email == request.auth.token.email);
+      
+      allow create: if isValidId(leadId) 
+        && incoming().keys().size() >= 5 && incoming().keys().size() <= 10
+        && isValidLead(incoming())
+        && incoming().status == 'new'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      
+      allow update: if isValidId(leadId) && isAdmin()
+        && isValidLead(incoming())
+        && incoming().updatedAt == request.time
+        && incoming().createdAt == existing().createdAt
+        && (
+          // Action: Update Status
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+          // Action: Edit Details
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'email', 'phone', 'source', 'message', 'updatedAt'])
+        );
+      
+      allow delete: if isValidId(leadId) && isAdmin();
+
+      // --- Notes ---
+      function isValidNote(data) {
+        return data.keys().hasAll(['authorId', 'authorName', 'text', 'createdAt'])
+          && data.keys().size() == 4
+          && data.authorId == request.auth.uid
+          && data.authorName is string && data.authorName.size() <= 128
+          && data.text is string && data.text.size() <= 2048
+          && data.createdAt == request.time;
+      }
+
+      match /notes/{noteId} {
+        allow get: if isValidId(leadId) && isValidId(noteId) && isAdmin();
+        allow list: if isValidId(leadId) && isAdmin();
+        
+        allow create: if isValidId(leadId) && isValidId(noteId) && isAdmin()
+          && exists(/databases/$(database)/documents/leads/$(leadId))
+          && isValidNote(incoming());
+        
+        allow update: if isValidId(leadId) && isValidId(noteId) && isAdmin()
+          && isValidNote(incoming())
+          && incoming().authorId == existing().authorId
+          && incoming().createdAt == existing().createdAt;
+          
+        allow delete: if isValidId(leadId) && isValidId(noteId) && isAdmin();
+      }
+    }
+
+    // --- Admins ---
+    match /admins/{adminUid} {
+      allow read: if isValidId(adminUid) && isSignedIn() && request.auth.uid == adminUid;
+      
+      allow create: if isValidId(adminUid) && isSignedIn() 
+        && request.auth.uid == adminUid 
+        && request.auth.token.email == "sumakanthib@gmail.com"
+        && request.auth.token.email_verified == true;
+        
+      // For now, no updates or deletes to admin structure from client
+    }
+  }
+}

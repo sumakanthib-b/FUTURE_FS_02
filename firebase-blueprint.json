@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "Lead": {
+      "title": "Lead",
+      "description": "Information about a potential client lead.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the lead" },
+        "email": { "type": "string", "format": "email", "description": "Email address of the lead" },
+        "phone": { "type": "string", "description": "Phone number of the lead" },
+        "source": { "type": "string", "description": "Source of the lead (e.g., website contact form)" },
+        "status": { 
+          "type": "string", 
+          "enum": ["new", "contacted", "converted"],
+          "description": "Current status of the lead" 
+        },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the lead was created" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "When the lead was last updated" }
+      },
+      "required": ["name", "email", "status", "createdAt", "updatedAt"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "A follow-up note for a lead.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "UID of the admin who wrote the note" },
+        "authorName": { "type": "string", "description": "Name of the admin who wrote the note" },
+        "text": { "type": "string", "description": "Content of the note" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the note was created" }
+      },
+      "required": ["authorId", "authorName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Collection of leads."
+    },
+    "/leads/{leadId}/notes/{noteId}": {
+      "schema": "Note",
+      "description": "Subcollection of notes for a specific lead."
+    },
+    "/admins/{adminUid}": {
+      "schema": {
+        "title": "Admin",
+        "type": "object",
+        "properties": {
+          "email": { "type": "string" },
+          "role": { "type": "string" }
+        },
+        "required": ["email", "role"]
+      },
+      "description": "Collection of platform administrators."
+    }
+  }
+}
